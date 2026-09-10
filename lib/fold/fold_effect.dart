@@ -19,6 +19,13 @@ class FoldEffect extends StatefulWidget {
     this.params = const FoldParameters(),
   });
 
+  /// Below this |angle| the effect is switched off and the child is painted
+  /// directly, exactly as `FoldEffectModifier` does with
+  /// `isEnabled: abs(angle) > 1e-4`. The shader's own `tilt < 1e-5` identity
+  /// branch is unreachable through this widget as a result — as it is in the
+  /// original.
+  static const double minVisibleAngle = 1e-4;
+
   /// Tilt θ, radians, signed per context.md.
   final double angle;
 
@@ -76,7 +83,13 @@ class _FoldEffectState extends State<FoldEffect> {
       ..setFloat(3, p.eyeDistancePx) // uEyeDistPx
       ..setFloat(4, p.blurSpread) // uBlurSpread
       ..setFloat(5, p.darkening) // uDarkening
-      ..setImageSampler(0, image, filterQuality: FilterQuality.none); // uTex
+      // `SwiftUI::Layer::sample` is a linearly filtered fetch; nearest
+      // stair-steps the reprojected image where the original is smooth. Only
+      // the filter changes: sampleRgb() still blacks out anything outside the
+      // interface, so no tap depends on the sampler's addressing (006).
+      // dart:ui's FilterQuality has no `linear` constant; `low` is the
+      // documented bilinear filter the plan's own Math §3 means by "linear".
+      ..setImageSampler(0, image, filterQuality: FilterQuality.low); // uTex
     canvas.drawRect(Offset.zero & size, Paint()..shader = shader);
   }
 
@@ -94,7 +107,8 @@ class _FoldEffectState extends State<FoldEffect> {
       (ui.Image image, Size size, Canvas canvas) {
         _paint(shader!, image, size, canvas);
       },
-      enabled: shader != null,
+      enabled:
+          shader != null && widget.angle.abs() > FoldEffect.minVisibleAngle,
       child: widget.child,
     );
   }

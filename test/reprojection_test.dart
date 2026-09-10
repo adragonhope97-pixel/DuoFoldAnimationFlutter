@@ -76,7 +76,13 @@ Future<ByteData> _render(
   final AnimatedSampler sampler = tester.widget<AnimatedSampler>(
     find.byType(AnimatedSampler),
   );
-  expect(sampler.enabled, isTrue, reason: 'shader must be loaded first');
+  // FoldEffect gates the sampler on |angle| > 1e-4, as FoldEffectModifier does
+  // with `isEnabled:`; at θ = 0 the child is painted with no shader at all.
+  expect(
+    sampler.enabled,
+    degrees != 0,
+    reason: 'the shader must be loaded, and the sampler gated on the angle',
+  );
 
   ByteData? bytes;
   await tester.runAsync(() async {
@@ -101,7 +107,7 @@ Color _pixel(ByteData bytes, int x, int y, {int stride = 400}) {
 }
 
 void main() {
-  testWidgets('θ = 0 is the identity: split at the centre, no black', (
+  testWidgets('θ = 0: the effect is bypassed, the child paints unchanged', (
     WidgetTester tester,
   ) async {
     final ByteData px = await _render(tester, 0);

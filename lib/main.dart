@@ -54,7 +54,7 @@ class FoldApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Duo Fold',
+      title: 'DuoLikeAnimation',
       debugShowCheckedModeBanner: false,
       // Light, like the original running in the light appearance (see
       // Docs/demo.png). Seeded with systemBlue because SwiftUI's default

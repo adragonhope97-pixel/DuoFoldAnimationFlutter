@@ -14,9 +14,8 @@ Future<void> pumpDemo(WidgetTester tester) async {
     Builder(
       builder: (BuildContext context) {
         return MediaQuery(
-          data: MediaQueryData.fromView(
-            tester.view,
-          ).copyWith(padding: const EdgeInsets.only(top: 47, bottom: 34)),
+          data: MediaQueryData.fromView(tester.view)
+              .copyWith(padding: const EdgeInsets.only(top: 47, bottom: 34)),
           child: const Directionality(
             textDirection: TextDirection.ltr,
             child: DemoContent(),

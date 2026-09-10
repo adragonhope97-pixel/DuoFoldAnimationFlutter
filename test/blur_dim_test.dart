@@ -139,25 +139,24 @@ void main() {
     expect(r + b, closeTo(222, 6));
   });
 
-  testWidgets(
-    'θ = -20°: the wedge is black inside and feathered at its edge',
-    (WidgetTester tester) async {
-      final ByteData px = await _render(tester, -20);
-      // hit.y ≈ -33.9 and -23.2: the whole 16.4 px kernel is off the interface.
-      expect(_rgb(px, 399, 0), (0, 0, 0));
-      expect(_rgb(px, 399, 10), (0, 0, 0));
-      // hit.y ≈ 933.9 and 923.2: the same at the bottom.
-      expect(_rgb(px, 399, 899), (0, 0, 0));
-      expect(_rgb(px, 399, 889), (0, 0, 0));
-      // hit.y ≈ -1.7: the kernel straddles the top border, so this pixel is a
-      // partial average — dark, but neither black nor full brightness.
-      final (int r, int g, int b) = _rgb(px, 399, 30);
-      expect(r, 0);
-      expect(g, 0);
-      expect(b, greaterThan(15));
-      expect(b, lessThan(150));
-    },
-  );
+  testWidgets('θ = -20°: the wedge is black inside and feathered at its edge', (
+    WidgetTester tester,
+  ) async {
+    final ByteData px = await _render(tester, -20);
+    // hit.y ≈ -33.9 and -23.2: the whole 16.4 px kernel is off the interface.
+    expect(_rgb(px, 399, 0), (0, 0, 0));
+    expect(_rgb(px, 399, 10), (0, 0, 0));
+    // hit.y ≈ 933.9 and 923.2: the same at the bottom.
+    expect(_rgb(px, 399, 899), (0, 0, 0));
+    expect(_rgb(px, 399, 889), (0, 0, 0));
+    // hit.y ≈ -1.7: the kernel straddles the top border, so this pixel is a
+    // partial average — dark, but neither black nor full brightness.
+    final (int r, int g, int b) = _rgb(px, 399, 30);
+    expect(r, 0);
+    expect(g, 0);
+    expect(b, greaterThan(15));
+    expect(b, lessThan(150));
+  });
 
   testWidgets('θ = +20°: the hinge is on the other edge, same magnitudes', (
     WidgetTester tester,

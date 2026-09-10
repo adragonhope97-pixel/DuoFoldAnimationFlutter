@@ -271,11 +271,41 @@ docs/
   `test/blur_dim_test.dart`); the phone at 390×844 satisfies it everywhere.
 - `SwiftUI::Layer::sample` is a **linearly filtered**, premultiplied fetch with
   `address::clamp_to_zero` (hence black, not clamped edge, outside the layer).
-  We match the addressing in `sampleRgb` but still sample nearest
-  (`FilterQuality.none`, 002 decision, kept by 005 decision 9). That is the one
-  known remaining departure from the original; resolving it is a 006 item, and
-  no 002/005 probe sits near enough to a colour seam to move if it flips to
-  `FilterQuality.linear`.
+  We match the addressing in `sampleRgb` and, since 006, the filter:
+  `setImageSampler(0, image, filterQuality: FilterQuality.low)`. `dart:ui` has
+  no `FilterQuality.linear` — the enum is `none, low, medium, high` and `low`
+  is the bilinear one. Do **not** "upgrade" it to `medium`: that selects a
+  mipmap level, and the `toImageSync` texture `AnimatedSampler` hands us has no
+  mip chain. What remains is a half-pixel band at the interface border, where
+  hardware clamp-to-edge blends with the edge texel and the Metal's
+  `clamp_to_zero` blends with transparent black (006 decision 2, rejected as
+  4 fetches per tap).
+- The bilinear fetch is an exact identity only while `ceil(dpr·W) == dpr·W`:
+  `AnimatedSampler._buildChildScene` allocates `(dpr·width).ceil()` texels but
+  the shader maps `uv = q / uSize`, so the texel scale is `ceil(dpr·W)/W`.
+  Integral on iOS (390×844 @3× → 1170×2532) and in both probe suites; a
+  fractional-dpr panel would soften the whole image slightly. Do not "fix" this
+  by dividing by the texture size — `uSize` is the logical contract.
 - The disk-rotation hash is fed `FlutterFragCoord()` (layer-local), where the
   Metal feeds `position` (pre-`bounds.xy`). That translates the grain field and
   changes nothing else; do not "fix" it by adding an offset uniform.
+- The effect is gated in Dart on `|θ| > FoldEffect.minVisibleAngle = 1e-4`,
+  which is `FoldEffectModifier`'s `isEnabled: abs(angle) > 1e-4` verbatim. Two
+  consequences. (i) The shader's `tilt < 1e-5` identity branch is unreachable
+  through `FoldEffect` — it is dead in the Metal too; leave it, it is the
+  original's line. (ii) The original's `.compositingGroup()` sits *outside*
+  `isEnabled`, so it flattens the subtree on every frame and gates only the
+  `layerEffect`; `AnimatedSampler.enabled: false` removes the offscreen
+  entirely. Crossing the threshold is worth ~0.026 texel of resample shift and
+  0.018/255 of dimming (006 review §3), so it cannot pop on its own — but if a
+  held-still phone shows a shimmer on hard rect edges, that is the offscreen
+  appearing and disappearing, not the maths.
+- Manual mode quantises to 0.5° = 8.7e-3 rad, so the slider never lands inside
+  the ±1e-4 gate band; at-rest Core Motion noise is 1e-4…1e-3 rad, so in motion
+  mode the gate is open essentially always. The gate is in practice a
+  manual-zero and first-frames-after-Recalibrate switch.
+- `dart format` (Dart 3.13.1, tall style) rewrites files this project has
+  carried since 003. Running it is part of every phase's commands; the two-file
+  reflow it produced in 006 was pre-existing drift, verified by formatting the
+  `be6eecd` blobs. `dart format --output=none --set-exit-if-changed lib test`
+  must exit 0 before a report is written.

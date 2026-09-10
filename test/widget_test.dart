@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
-import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart' show CupertinoIcons, CupertinoSlider;
 import 'package:flutter_shaders/flutter_shaders.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:iphoneduo_animation_flutter/demo/control_panel.dart';
@@ -152,19 +152,25 @@ void main() {
       expect(find.byType(FoldEffect), findsOneWidget);
       expect(find.byType(DemoContent), findsOneWidget);
       expect(find.byType(ControlPanel), findsOneWidget);
-      expect(find.byIcon(Icons.tune), findsOneWidget);
-      expect(find.byType(Slider), findsNothing); // panel closed by default
+      expect(find.byIcon(CupertinoIcons.slider_horizontal_3), findsOneWidget);
+      // panel closed by default
+      expect(find.byType(CupertinoSlider), findsNothing);
 
-      await tester.tap(find.byIcon(Icons.tune));
+      await tester.tap(find.byIcon(CupertinoIcons.slider_horizontal_3));
       await tester.pumpAndSettle();
-      expect(find.byIcon(Icons.close), findsOneWidget);
-      expect(find.text('-20.0°'), findsOneWidget);
+      expect(find.byIcon(CupertinoIcons.xmark), findsOneWidget);
+      // The Swift renders the number and the degree sign as two Texts.
+      expect(find.text('-20.0'), findsOneWidget);
+      expect(find.text('°'), findsOneWidget);
       expect(find.text('Recalibrate'), findsOneWidget);
       expect(find.text('Manual tilt'), findsOneWidget);
-      final Slider slider = tester.widget<Slider>(find.byType(Slider));
+      final CupertinoSlider slider = tester.widget<CupertinoSlider>(
+        find.byType(CupertinoSlider),
+      );
       expect(slider.value, -20);
       expect(slider.min, -45);
       expect(slider.max, 45);
+      expect(slider.divisions, 180); // `step: 0.5` over −45…45
       expect(slider.onChanged, isNotNull); // manual mode: slider enabled
     });
 
@@ -173,7 +179,10 @@ void main() {
       (WidgetTester tester) async {
         // Driven by pump(): never await the loader before the first pump.
         await tester.pumpWidget(
-          FoldApp(motionChannel: FakeMotionChannel(available: false)),
+          FoldApp(
+            motionChannel: FakeMotionChannel(available: false),
+            initialTiltDegrees: -20,
+          ),
         );
         await tester.pump();
         await tester.pump();
@@ -182,6 +191,25 @@ void main() {
           find.byType(AnimatedSampler),
         );
         expect(sampler.enabled, isTrue);
+      },
+    );
+
+    testWidgets(
+      'at rest the sampler is off, like FoldEffect.swift\'s isEnabled:',
+      (WidgetTester tester) async {
+        await tester.pumpWidget(
+          FoldApp(motionChannel: FakeMotionChannel(available: false)),
+        );
+        await tester.pump();
+        await tester.pump();
+        // |angle| = 0 < 1e-4: the child is painted with no shader at all, as
+        // FoldEffectModifier's `isEnabled:` switches its layerEffect off. Note
+        // the original's `.compositingGroup()` sits outside `isEnabled`, so it
+        // still flattens the subtree at rest and we do not; see 006 review §3.
+        final AnimatedSampler sampler = tester.widget<AnimatedSampler>(
+          find.byType(AnimatedSampler),
+        );
+        expect(sampler.enabled, isFalse);
       },
     );
   });
