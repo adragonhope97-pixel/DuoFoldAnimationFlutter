@@ -24,8 +24,9 @@ class FoldParameters {
   /// Clamp on |θ| in degrees. Every tilt source applies it before notifying.
   final double maxTiltDeg;
 
-  /// Blur tap count. A compile-time constant in `shaders/duo_fold.frag`
-  /// (ceiling 24), recorded here for display only — it is not a uniform.
+  /// Blur tap count. Phase 003 bakes it into `shaders/duo_fold.frag` as a
+  /// compile-time constant (ceiling 24). Recorded here for display only: it
+  /// is not a uniform and has no effect before 003.
   static const int blurTaps = 16;
 
   /// Logical px per millimetre: Flutter logical px are 1/160 in by

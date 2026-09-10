@@ -1,0 +1,138 @@
+import 'dart:math' as math;
+import 'dart:typed_data';
+import 'dart:ui' as ui;
+
+import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter_shaders/flutter_shaders.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:iphoneduo_animation_flutter/fold/fold_effect.dart';
+import 'package:iphoneduo_animation_flutter/fold/fold_parameters.dart';
+
+// Pixel probes against the reference math (docs/plans/002-reprojection.md,
+// Math). Geometry: W = 400, H = 300 logical px, dpr = 1, D = 2015.748 px.
+// At |θ| = 20° (sin 0.34202, cos 0.93969):
+//   hinge column (d = 0.5):  t ≈ 1.00009 → samples itself
+//   far edge   (d = 399.5):  t ≈ 1.07272 → hit.y = 150 ± 1.07272·(py − 150)
+//                            → rows 0..9 and 290..299 miss the interface
+//   centre     (d = 200.5):  t ≈ 1.03521 → hit.x ≈ 188.0 (θ < 0), ≈ 213.0 (θ > 0)
+const double _w = 400;
+const double _h = 300;
+const Color _red = Color(0xFFFF0000);
+const Color _blue = Color(0xFF0000FF);
+const Color _black = Color(0xFF000000);
+
+/// Left half red, right half blue, split exactly at x = W / 2.
+class _SplitChild extends StatelessWidget {
+  const _SplitChild();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Row(
+      // A childless ColoredBox lays out at height 0 under a Row's loose
+      // cross-axis constraints; stretch so the halves fill the height.
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        Expanded(child: ColoredBox(color: _red)),
+        Expanded(child: ColoredBox(color: _blue)),
+      ],
+    );
+  }
+}
+
+Future<ByteData> _render(WidgetTester tester, double degrees) async {
+  tester.view.devicePixelRatio = 1.0;
+  tester.view.physicalSize = const Size(_w, _h);
+  addTearDown(tester.view.reset);
+
+  final GlobalKey key = GlobalKey();
+  await tester.pumpWidget(
+    MaterialApp(
+      home: RepaintBoundary(
+        key: key,
+        child: FoldEffect(
+          angle: degrees * math.pi / 180,
+          params: const FoldParameters(),
+          child: const _SplitChild(),
+        ),
+      ),
+    ),
+  );
+  await tester.pump();
+  await tester.pump();
+  final AnimatedSampler sampler = tester.widget<AnimatedSampler>(
+    find.byType(AnimatedSampler),
+  );
+  expect(sampler.enabled, isTrue, reason: 'shader must be loaded first');
+
+  ByteData? bytes;
+  await tester.runAsync(() async {
+    final RenderRepaintBoundary boundary =
+        key.currentContext!.findRenderObject()! as RenderRepaintBoundary;
+    final ui.Image image = await boundary.toImage();
+    bytes = await image.toByteData(format: ui.ImageByteFormat.rawStraightRgba);
+    image.dispose();
+  });
+  return bytes!;
+}
+
+Color _pixel(ByteData bytes, int x, int y) {
+  final int i = (y * _w.toInt() + x) * 4;
+  return Color.fromARGB(
+    bytes.getUint8(i + 3),
+    bytes.getUint8(i),
+    bytes.getUint8(i + 1),
+    bytes.getUint8(i + 2),
+  );
+}
+
+void main() {
+  testWidgets('θ = 0 is the identity: split at the centre, no black', (
+    WidgetTester tester,
+  ) async {
+    final ByteData px = await _render(tester, 0);
+    expect(_pixel(px, 190, 150), _red);
+    expect(_pixel(px, 210, 150), _blue);
+    expect(_pixel(px, 0, 0), _red);
+    expect(_pixel(px, 399, 0), _blue);
+    expect(_pixel(px, 0, 299), _red);
+    expect(_pixel(px, 399, 299), _blue);
+  });
+
+  testWidgets('θ = -20°: hinge LEFT, black wedges on the lifted right edge', (
+    WidgetTester tester,
+  ) async {
+    final ByteData px = await _render(tester, -20);
+    // Hinge column samples itself.
+    expect(_pixel(px, 0, 0), _red);
+    expect(_pixel(px, 0, 150), _red);
+    expect(_pixel(px, 0, 299), _red);
+    // Far edge: ~10 px wedges top and bottom are black, the middle is content.
+    expect(_pixel(px, 399, 0), _black);
+    expect(_pixel(px, 399, 5), _black);
+    expect(_pixel(px, 399, 20), _blue);
+    expect(_pixel(px, 399, 150), _blue);
+    expect(_pixel(px, 399, 280), _blue);
+    expect(_pixel(px, 399, 294), _black);
+    expect(_pixel(px, 399, 299), _black);
+    // Centre pixel looks at hit.x ≈ 188: the interface appears shifted toward the hinge.
+    expect(_pixel(px, 200, 150), _red);
+  });
+
+  testWidgets('θ = +20°: hinge RIGHT, mirror image', (
+    WidgetTester tester,
+  ) async {
+    final ByteData px = await _render(tester, 20);
+    expect(_pixel(px, 399, 0), _blue);
+    expect(_pixel(px, 399, 150), _blue);
+    expect(_pixel(px, 399, 299), _blue);
+    expect(_pixel(px, 0, 0), _black);
+    expect(_pixel(px, 0, 5), _black);
+    expect(_pixel(px, 0, 20), _red);
+    expect(_pixel(px, 0, 150), _red);
+    expect(_pixel(px, 0, 280), _red);
+    expect(_pixel(px, 0, 294), _black);
+    expect(_pixel(px, 0, 299), _black);
+    expect(_pixel(px, 200, 150), _blue);
+  });
+}
