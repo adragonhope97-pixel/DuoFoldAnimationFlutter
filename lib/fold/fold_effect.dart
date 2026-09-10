@@ -74,8 +74,8 @@ class _FoldEffectState extends State<FoldEffect> {
       ..setFloat(1, size.height) // uSize.y
       ..setFloat(2, widget.angle) // uAngle
       ..setFloat(3, p.eyeDistancePx) // uEyeDistPx
-      ..setFloat(4, p.maxBlurPx) // uMaxBlurPx
-      ..setFloat(5, p.dimStrength) // uDimStrength
+      ..setFloat(4, p.blurSpread) // uBlurSpread
+      ..setFloat(5, p.darkening) // uDarkening
       ..setImageSampler(0, image, filterQuality: FilterQuality.none); // uTex
     canvas.drawRect(Offset.zero & size, Paint()..shader = shader);
   }

@@ -17,6 +17,12 @@ import 'package:iphoneduo_animation_flutter/fold/fold_parameters.dart';
 //                            → rows 0..10 and 289..299 miss the interface
 //   centre     (d = 200.5):  t ≈ 1.03704 → hit.x ≈ 188.0 (θ < 0), ≈ 213.0 (θ > 0)
 // Every probe is ≥ 9 px from a predicted boundary.
+//
+// Blur and dim are switched off here (blurSpread = darkening = 0). With
+// radius = 0 the 005 kernel reduces exactly to 002's path — one bounds-checked
+// sample, attenuation 1, black iff hit ∉ [0,uSize] — so these probes keep
+// their literal colours and stay a pure test of the reprojection geometry.
+// Blur and dimming are pinned by test/blur_dim_test.dart.
 const double _w = 400;
 const double _h = 300;
 const Color _red = Color(0xFFFF0000);
@@ -59,7 +65,7 @@ Future<ByteData> _render(
         key: key,
         child: FoldEffect(
           angle: degrees * math.pi / 180,
-          params: const FoldParameters(),
+          params: const FoldParameters(blurSpread: 0, darkening: 0),
           child: const _SplitChild(),
         ),
       ),

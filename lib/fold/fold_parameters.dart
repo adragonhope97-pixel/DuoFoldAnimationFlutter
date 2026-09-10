@@ -6,8 +6,8 @@ class FoldParameters {
   const FoldParameters({
     this.eyeDistanceMm = 320,
     this.pointsPerMm = 6,
-    this.maxBlurPx = 24,
-    this.dimStrength = 0.6,
+    this.blurSpread = 0.12,
+    this.darkening = 0.015,
   });
 
   /// Distance from the viewer's eyes to the untilted screen, looking at it
@@ -20,13 +20,16 @@ class FoldParameters {
   /// (Swift: `pointsPerMillimeter`.) Deliberately not devicePixelRatio.
   final double pointsPerMm;
 
-  /// Placeholder for uniform slot 4 until the blur phase adopts the
-  /// original's `blurSpread`. Unused by the shader before then.
-  final double maxBlurPx;
+  /// Blur radius gained per logical px of separation between the glass and
+  /// the interface plane — the tangent of the frosted glass's scattering
+  /// half-angle. The shader uses `radius = blurSpread · gap`, both in logical
+  /// px. (Swift: `blurSpread`.) Uniform slot 4.
+  final double blurSpread;
 
-  /// Placeholder for uniform slot 5 until the blur phase adopts the
-  /// original's `darkening`. Range 0..1. Unused by the shader before then.
-  final double dimStrength;
+  /// Fraction of light lost per logical px of blur radius, so the frostier
+  /// the glass the darker it gets: `rgb *= max(1 − darkening · radius, 0)`.
+  /// (Swift: `darkening`.) Uniform slot 5.
+  final double darkening;
 
   /// [eyeDistanceMm] in logical px — the value the shader receives as
   /// `uEyeDistPx`. 320 mm × 6 px/mm = 1920 px, as in the original.
@@ -35,14 +38,14 @@ class FoldParameters {
   FoldParameters copyWith({
     double? eyeDistanceMm,
     double? pointsPerMm,
-    double? maxBlurPx,
-    double? dimStrength,
+    double? blurSpread,
+    double? darkening,
   }) {
     return FoldParameters(
       eyeDistanceMm: eyeDistanceMm ?? this.eyeDistanceMm,
       pointsPerMm: pointsPerMm ?? this.pointsPerMm,
-      maxBlurPx: maxBlurPx ?? this.maxBlurPx,
-      dimStrength: dimStrength ?? this.dimStrength,
+      blurSpread: blurSpread ?? this.blurSpread,
+      darkening: darkening ?? this.darkening,
     );
   }
 
@@ -51,18 +54,18 @@ class FoldParameters {
     return other is FoldParameters &&
         other.eyeDistanceMm == eyeDistanceMm &&
         other.pointsPerMm == pointsPerMm &&
-        other.maxBlurPx == maxBlurPx &&
-        other.dimStrength == dimStrength;
+        other.blurSpread == blurSpread &&
+        other.darkening == darkening;
   }
 
   @override
   int get hashCode =>
-      Object.hash(eyeDistanceMm, pointsPerMm, maxBlurPx, dimStrength);
+      Object.hash(eyeDistanceMm, pointsPerMm, blurSpread, darkening);
 
   @override
   String toString() {
     return 'FoldParameters(eyeDistanceMm: $eyeDistanceMm, '
-        'pointsPerMm: $pointsPerMm, maxBlurPx: $maxBlurPx, '
-        'dimStrength: $dimStrength)';
+        'pointsPerMm: $pointsPerMm, blurSpread: $blurSpread, '
+        'darkening: $darkening)';
   }
 }

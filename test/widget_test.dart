@@ -37,6 +37,8 @@ void main() {
       expect(p.eyeDistanceMm, 320);
       expect(p.pointsPerMm, 6);
       expect(p.eyeDistancePx, 1920);
+      expect(p.blurSpread, 0.12);
+      expect(p.darkening, 0.015);
     });
 
     test('copyWith and equality', () {
@@ -44,6 +46,8 @@ void main() {
       expect(p.copyWith(), p);
       expect(p.copyWith(pointsPerMm: 6.3), isNot(p));
       expect(p.copyWith(eyeDistanceMm: 400).eyeDistancePx, 2400);
+      expect(p.copyWith(blurSpread: 0, darkening: 0), isNot(p));
+      expect(p.copyWith(blurSpread: 0).darkening, 0.015);
     });
   });
 

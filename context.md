@@ -64,35 +64,55 @@ Source layout, for reference when reading the Swift:
   rotation-matrix handedness against gravity). θ is not clamped; only the
   manual slider is bounded (−45…45°, 0.5° steps), as in the original.
 
-## Reference math (verified against DuoFold.metal in 002; implementer never alters)
+## Reference math (verified against DuoFold.metal in 002 and 005; implementer never alters)
 
-For pixel p = (px, py):
+For pixel p = (px, py), with S(q) = the interface sample at logical position q:
+`texture(uTex, q/uSize).rgb` when q ∈ [0,uSize]², else black. Outside the
+interface the sample is black, never the clamped edge — SwiftUI's `layer.sample`
+is transparent outside the layer (`layerEffect(maxSampleOffset: .zero)`), and
+clamping smears the border.
 
 ```
-if |θ| < 1e-5 → sample p directly (identity); skip the rest
+if |θ| < 1e-5 → S(p), alpha 1 (identity); skip the rest
 u   = px - xh                       // signed distance from hinge along x
 G   = (xh + u·cos|θ|, py, |u|·sin|θ|)   // pixel's position on the rotated glass
 if E.z - G.z ≤ 1e-3 → black         // glass at/behind the eye (Metal guard)
 t   = E.z / (E.z - G.z)             // ray E→G extended to z = 0
 P   = E + t·(G - E)                 // hit point on interface plane
-uv  = P.xy / uSize                  // sample coordinate; black if P.xy ∉ [0,W]×[0,H]
 gap = G.z                           // 0 at hinge, W·sin|θ| at far edge
 r   = blurSpread · gap              // blur radius in logical px; blurSpread = 0.12.
                                     // The ABSOLUTE gap, as in DuoFold.metal: no
                                     // normalisation, because there is no maximum tilt
                                     // any more — 003 deleted maxTiltDeg/maxTiltRad.
-                                    // Settled in the 003 review; 005 implements it.
+if P.xy < -r or P.xy > uSize + r → black    // the WHOLE kernel misses the
+                                    // interface. This is DuoFold.metal's only
+                                    // bounds test; "black iff P ∉ [0,uSize]" is
+                                    // its r = 0 case, which is why the wedge
+                                    // acquires an r-wide feathered edge in 005.
+a   = max(1 - darkening · r, 0)     // attenuation; darkening = 0.015
+if r < 0.5 → rgb = a · S(P)         // one tap, no kernel
+else         n  = clamp(int(r·2), 6, 32)          // taps
+             φ  = hash21(p) · 2π
+             hash21(q) = fract(sin(dot(q, (12.9898, 78.233))) · 43758.5453)
+             rᵢ = r · sqrt((i + 0.5) / n)         // area-uniform in i
+             αᵢ = i · 2.39996322972865332 + φ     // golden angle
+             rgb = a · (1/n) · Σᵢ₌₀ⁿ⁻¹ S(P + rᵢ·(cos αᵢ, sin αᵢ))
+alpha is always 1
 ```
 
-- If `uv` is outside [0,1]² → output black (alpha 1). Do not rely on
-  sampler clamping; it smears the border.
-- Blur: golden-angle (Vogel) disk of radius `r`, tap count
-  `clamp(int(r·2), 6, 32)` evaluated under a constant GLSL loop bound; the
-  005 plan fixes the bound and the offset schedule. Taps that land outside
-  [0,1]² contribute black, not clamped edge.
-- Dim: `rgb *= max(1 − darkening · r, 0)` with `darkening = 0.015` (Metal's
-  `attenuation`). Slots 4 and 5 carry `blurSpread` and `darkening` from 005;
-  the uniform table is renamed by that plan, not before it.
+- Everything is in logical px, including `gap`, `r` and the tap offsets; the
+  blur is therefore `r · devicePixelRatio` physical px wide, exactly as the
+  original's points-based radius is at 3×.
+- The tap loop's bound must be the compile-time constant 32 (Impeller/SkSL);
+  the live count `n` is honoured with `if (i >= n) break;` inside it. `n` is
+  computed in float (`clamp(floor(r·2), 6, 32)`) because integer `clamp` is not
+  safe across the dialects the asset is compiled for.
+- Attenuation applies to the single-sample path and the blur path alike, and is
+  1 in the identity path (r = 0 there).
+- At `blurSpread = 0` the whole kernel collapses to the 002 path exactly:
+  `±r` bounds ≡ `[0,uSize]` bounds, `a` ≡ 1, `r < 0.5` ⇒ one tap. That identity
+  is what lets `test/reprojection_test.dart` keep its literal colours; it is
+  verified, not assumed (005 review §2).
 
 ## Uniform layout (fixed — order matters, indices are what Dart uses)
 
@@ -100,8 +120,8 @@ r   = blurSpread · gap              // blur radius in logical px; blurSpread = 
 uniform vec2  uSize;           // 0,1  logical size
 uniform float uAngle;          // 2    tilt θ, radians, signed per convention
 uniform float uEyeDistPx;      // 3
-uniform float uMaxBlurPx;      // 4
-uniform float uDimStrength;    // 5    0..1
+uniform float uBlurSpread;     // 4    blur radius per px of gap (0.12)
+uniform float uDarkening;      // 5    light lost per px of radius (0.015)
 uniform sampler2D uTex;        // sampler 0
 ```
 
@@ -113,9 +133,9 @@ Adding a uniform = append at the end, bump this table, note it in the plan.
 |---|---|---|
 | eyeDistanceMm | 320 | Swift `eyeDistanceMillimeters` |
 | pointsPerMm | 6 | Swift `pointsPerMillimeter`; eye = 1920 px |
-| maxBlurPx | 24 | placeholder holding uniform slot 4 since 003. In 005 the slot becomes `blurSpread = 0.12` with the Metal semantics: `radius = blurSpread · gap`. |
-| dimStrength | 0.6 | placeholder holding uniform slot 5 since 003. 005 adopts `attenuation = max(1 − darkening · radius, 0)`, `darkening = 0.015`. |
-| (blur taps) | — | the blur phase uses the original's `clamp(int(radius·2), 6, 32)` under a constant loop bound; no Dart tunable |
+| blurSpread | 0.12 | Swift `blurSpread`; uniform slot 4 since 005. `radius = blurSpread · gap`, both logical px |
+| darkening | 0.015 | Swift `darkening`; uniform slot 5 since 005. `attenuation = max(1 − darkening · radius, 0)` |
+| (blur taps) | — | `clamp(int(radius·2), 6, 32)`, Vogel disk, per-pixel hash rotation, one tap below radius 0.5; loop bound is the constant 32; no Dart tunable |
 
 ## Package targets
 
@@ -242,3 +262,20 @@ docs/
   font metrics are ascent ≈ 0.953 em, descent ≈ 0.228 em (line box ≈ 1.181 em);
   the ascent is what `DemoHeader.textTopInset = 44 − 0.953 × 15 = 29.7` is
   derived from, so do not "round" it away.
+- The blur costs up to 32 texture fetches per *physical* fragment (≈95 M/frame
+  at 1170×2532). That is what the original does at 3×; do not raise the cap, and
+  do not add a second blur pass.
+- A 400×300 test canvas cannot produce a fully black pixel under blur: a pixel
+  is black only where the ray misses by more than `r`, i.e. where
+  `D − gap < (H/2)/blurSpread`. Blur probes need a tall canvas (400×900 in
+  `test/blur_dim_test.dart`); the phone at 390×844 satisfies it everywhere.
+- `SwiftUI::Layer::sample` is a **linearly filtered**, premultiplied fetch with
+  `address::clamp_to_zero` (hence black, not clamped edge, outside the layer).
+  We match the addressing in `sampleRgb` but still sample nearest
+  (`FilterQuality.none`, 002 decision, kept by 005 decision 9). That is the one
+  known remaining departure from the original; resolving it is a 006 item, and
+  no 002/005 probe sits near enough to a colour seam to move if it flips to
+  `FilterQuality.linear`.
+- The disk-rotation hash is fed `FlutterFragCoord()` (layer-local), where the
+  Metal feeds `position` (pre-`bounds.xy`). That translates the grain field and
+  changes nothing else; do not "fix" it by adding an offset uniform.
