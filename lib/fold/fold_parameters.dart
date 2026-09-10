@@ -1,57 +1,48 @@
-import 'dart:math' as math;
-
-/// Tunables for the fold effect. Mirrors `FoldParameters` in the Swift source.
+/// Physical parameters of the frosted-glass fold. Mirrors `FoldParameters`
+/// in FoldEffect.swift (elijah-semyonov/DuoLikeAnimation) field for field.
 ///
-/// Immutable; derive variants with [copyWith]. Defaults come from
-/// context.md → "Tunables".
+/// Immutable; derive variants with [copyWith].
 class FoldParameters {
   const FoldParameters({
     this.eyeDistanceMm = 320,
+    this.pointsPerMm = 6,
     this.maxBlurPx = 24,
     this.dimStrength = 0.6,
-    this.maxTiltDeg = 35,
   });
 
-  /// Eye-to-interface distance in millimetres (Swift default: 320).
+  /// Distance from the viewer's eyes to the untilted screen, looking at it
+  /// head-on. The eye stays there while the device tilts. A typical
+  /// hand-held distance is about 30 cm. (Swift: `eyeDistanceMillimeters`.)
   final double eyeDistanceMm;
 
-  /// Disk-blur radius in logical px at the far edge (g = 1).
+  /// Approximate density of logical px (iOS points) on current iPhone panels:
+  /// about 460 ppi at 3x and 326 ppi at 2x, both close to 6 pt/mm.
+  /// (Swift: `pointsPerMillimeter`.) Deliberately not devicePixelRatio.
+  final double pointsPerMm;
+
+  /// Placeholder for uniform slot 4 until the blur phase adopts the
+  /// original's `blurSpread`. Unused by the shader before then.
   final double maxBlurPx;
 
-  /// Fraction of brightness removed at the far edge (g = 1). Range 0..1.
+  /// Placeholder for uniform slot 5 until the blur phase adopts the
+  /// original's `darkening`. Range 0..1. Unused by the shader before then.
   final double dimStrength;
 
-  /// Clamp on |θ| in degrees. Every tilt source applies it before notifying.
-  final double maxTiltDeg;
-
-  /// Blur tap count. Phase 003 bakes it into `shaders/duo_fold.frag` as a
-  /// compile-time constant (ceiling 24). Recorded here for display only: it
-  /// is not a uniform and has no effect before 003.
-  static const int blurTaps = 16;
-
-  /// Logical px per millimetre: Flutter logical px are 1/160 in by
-  /// definition and there are 25.4 mm per inch. Deliberately not
-  /// devicePixelRatio (context.md → coordinate conventions).
-  static const double pxPerMm = 160 / 25.4;
-
-  /// [eyeDistanceMm] in logical px — the value the shader receives
-  /// as `uEyeDistPx`.
-  double get eyeDistancePx => eyeDistanceMm * pxPerMm;
-
-  /// [maxTiltDeg] in radians.
-  double get maxTiltRad => maxTiltDeg * math.pi / 180;
+  /// [eyeDistanceMm] in logical px — the value the shader receives as
+  /// `uEyeDistPx`. 320 mm × 6 px/mm = 1920 px, as in the original.
+  double get eyeDistancePx => eyeDistanceMm * pointsPerMm;
 
   FoldParameters copyWith({
     double? eyeDistanceMm,
+    double? pointsPerMm,
     double? maxBlurPx,
     double? dimStrength,
-    double? maxTiltDeg,
   }) {
     return FoldParameters(
       eyeDistanceMm: eyeDistanceMm ?? this.eyeDistanceMm,
+      pointsPerMm: pointsPerMm ?? this.pointsPerMm,
       maxBlurPx: maxBlurPx ?? this.maxBlurPx,
       dimStrength: dimStrength ?? this.dimStrength,
-      maxTiltDeg: maxTiltDeg ?? this.maxTiltDeg,
     );
   }
 
@@ -59,19 +50,19 @@ class FoldParameters {
   bool operator ==(Object other) {
     return other is FoldParameters &&
         other.eyeDistanceMm == eyeDistanceMm &&
+        other.pointsPerMm == pointsPerMm &&
         other.maxBlurPx == maxBlurPx &&
-        other.dimStrength == dimStrength &&
-        other.maxTiltDeg == maxTiltDeg;
+        other.dimStrength == dimStrength;
   }
 
   @override
   int get hashCode =>
-      Object.hash(eyeDistanceMm, maxBlurPx, dimStrength, maxTiltDeg);
+      Object.hash(eyeDistanceMm, pointsPerMm, maxBlurPx, dimStrength);
 
   @override
   String toString() {
     return 'FoldParameters(eyeDistanceMm: $eyeDistanceMm, '
-        'maxBlurPx: $maxBlurPx, dimStrength: $dimStrength, '
-        'maxTiltDeg: $maxTiltDeg)';
+        'pointsPerMm: $pointsPerMm, maxBlurPx: $maxBlurPx, '
+        'dimStrength: $dimStrength)';
   }
 }

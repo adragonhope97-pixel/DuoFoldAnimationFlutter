@@ -4,23 +4,29 @@ import 'demo/control_panel.dart';
 import 'demo/demo_content.dart';
 import 'fold/fold_effect.dart';
 import 'fold/fold_parameters.dart';
-import 'motion/manual_tilt.dart';
+import 'motion/fold_motion_channel.dart';
+import 'motion/fold_motion_model.dart';
 
-/// Launch-time tilt for screenshots on targets without motion data:
+/// Launch-time overrides, mirroring FoldMotionModel.swift's
+/// `TILT_DEGREES` environment variable and `manualTilt` default:
 ///
-///     flutter run -d macos --dart-define=TILT_DEGREES=-20
+///     flutter run -d <device> --dart-define=TILT_DEGREES=-20 --dart-define=MANUAL_TILT=true
 ///
-/// Read as a string: `double.fromEnvironment` does not exist.
+/// `double.fromEnvironment` does not exist; the angle is parsed from a string.
 const String _tiltDegreesDefine = String.fromEnvironment(
   'TILT_DEGREES',
   defaultValue: '0',
 );
+const bool _manualTiltDefine = bool.fromEnvironment('MANUAL_TILT');
 
 /// The `TILT_DEGREES` dart-define as a finite double; 0 when absent or bad.
 double launchTiltDegrees() {
   final double? value = double.tryParse(_tiltDegreesDefine);
   return value != null && value.isFinite ? value : 0;
 }
+
+/// The `MANUAL_TILT` dart-define; false when absent.
+bool launchManualTilt() => _manualTiltDefine;
 
 void main() {
   runApp(const FoldApp());
@@ -30,13 +36,19 @@ class FoldApp extends StatelessWidget {
   const FoldApp({
     super.key,
     this.params = const FoldParameters(),
+    this.motionChannel = const PlatformMotionChannel(),
     this.initialTiltDegrees,
+    this.forceManual,
   });
 
   final FoldParameters params;
 
-  /// Overrides the dart-define; tests pass this explicitly.
+  /// Injected by tests; the real bridge otherwise.
+  final MotionChannel motionChannel;
+
+  /// Overrides the dart-defines; tests pass these explicitly.
   final double? initialTiltDegrees;
+  final bool? forceManual;
 
   @override
   Widget build(BuildContext context) {
@@ -51,37 +63,51 @@ class FoldApp extends StatelessWidget {
       ),
       home: FoldScreen(
         params: params,
+        motionChannel: motionChannel,
         initialTiltDegrees: initialTiltDegrees ?? launchTiltDegrees(),
+        forceManual: forceManual ?? launchManualTilt(),
       ),
     );
   }
 }
 
-/// Full-screen glass ([FoldEffect] over [DemoContent]) with the flat
-/// [ControlPanel] floating at the bottom, outside the effect.
+/// ContentView.swift: full-screen glass ([FoldEffect] over [DemoContent])
+/// with the floating controls at the bottom-trailing corner, outside the
+/// effect. Motion starts on appear and stops on disappear.
 class FoldScreen extends StatefulWidget {
   const FoldScreen({
     super.key,
     required this.params,
+    required this.motionChannel,
     required this.initialTiltDegrees,
+    required this.forceManual,
   });
 
   final FoldParameters params;
+  final MotionChannel motionChannel;
   final double initialTiltDegrees;
+  final bool forceManual;
 
   @override
   State<FoldScreen> createState() => _FoldScreenState();
 }
 
 class _FoldScreenState extends State<FoldScreen> {
-  late final ManualTilt _tilt = ManualTilt(
-    maxDeg: widget.params.maxTiltDeg,
-    initialDeg: widget.initialTiltDegrees,
+  late final FoldMotionModel _model = FoldMotionModel(
+    channel: widget.motionChannel,
+    initialManualDegrees: widget.initialTiltDegrees,
+    forceManual: widget.forceManual,
   );
 
   @override
+  void initState() {
+    super.initState();
+    _model.start();
+  }
+
+  @override
   void dispose() {
-    _tilt.dispose();
+    _model.dispose();
     super.dispose();
   }
 
@@ -93,10 +119,10 @@ class _FoldScreenState extends State<FoldScreen> {
         fit: StackFit.expand,
         children: <Widget>[
           ListenableBuilder(
-            listenable: _tilt,
+            listenable: _model,
             builder: (BuildContext context, Widget? child) {
               return FoldEffect(
-                angle: _tilt.theta,
+                angle: _model.theta,
                 params: widget.params,
                 child: child!,
               );
@@ -104,17 +130,9 @@ class _FoldScreenState extends State<FoldScreen> {
             child: const DemoContent(),
           ),
           Positioned(
-            left: 16,
             right: 16,
             bottom: 16,
-            child: SafeArea(
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 440),
-                  child: ControlPanel(tilt: _tilt),
-                ),
-              ),
-            ),
+            child: SafeArea(child: ControlPanel(model: _model)),
           ),
         ],
       ),

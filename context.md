@@ -38,7 +38,7 @@ Source layout, for reference when reading the Swift:
 |---|---|
 | Metal `layerEffect` shader | GLSL fragment shader compiled by `impellerc`, loaded via `FragmentProgram.fromAsset` |
 | Feeding the rendered subtree into the shader | `AnimatedSampler` from `flutter_shaders` (child rasterised to `ui.Image` each frame, bound with `setImageSampler`) |
-| `CMMotionManager` attitude | Preferred: `flutter_rotation_sensor` (game-rotation-vector on Android, `CMDeviceMotion` on iOS). Fallback: `sensors_plus` gyro + accelerometer with our own complementary filter. Last resort: a small `MethodChannel`/`EventChannel` to `CMMotionManager` (`XArbitraryZVertical`) and Android `TYPE_GAME_ROTATION_VECTOR`. The architect chooses in phase 004. |
+| `CMMotionManager` attitude | `FoldMotionModel.swift` ported verbatim into `ios/Runner/AppDelegate.swift` (`FoldMotionBridge`), streamed over `EventChannel` `duo_fold/motion/tilt`; `MethodChannel` `duo_fold/motion` for `isAvailable`/`recalibrate`. Dart `FoldMotionModel` only switches between the stream and the slider. iOS only; chosen in 003 for exact fidelity. |
 | `FoldParameters` | `class FoldParameters` (immutable, `copyWith`) |
 | `.foldEffect(angle:)` | `FoldEffect(angle: double, params: FoldParameters, child: Widget)` |
 | Manual tilt slider / recalibrate panel | Same, plain Flutter widgets |
@@ -51,16 +51,18 @@ Source layout, for reference when reading the Swift:
   shader (`runtime_effect.vert`: `_fragCoord = position`), i.e. logical px
   from the widget's top-left. Established from source and by the 001
   build/test; on-screen Impeller confirmation is 002 acceptance item 0.
-- Eye distance is converted from mm to logical px on the Dart side:
-  `pxPerMm = 160 / 25.4` (Flutter logical px are 1/160 in by definition).
+- Eye distance is converted from mm to logical px on the Dart side with the
+  original's constant: `pointsPerMm = 6` (Flutter logical px equal iOS
+  points; ≈ 6 pt/mm on current panels), so the default eye is 1920 px.
   Do **not** use `devicePixelRatio` for this.
 - x grows right, y grows down, z grows **toward the viewer**. Interface
   plane is z = 0. Eye E = (W/2, H/2, D) where D = eyeDistancePx.
 - Tilt angle θ (radians). Sign convention: θ > 0 means the **right** edge
   is the hinge (the left edge lifts toward the viewer). Hinge x-coordinate
-  `xh = θ > 0 ? W : 0`. The motion model is responsible for producing θ in
-  this convention after resolving the rotation-matrix handedness against
-  gravity (see gotchas).
+  `xh = θ > 0 ? W : 0`. The native motion bridge produces θ in this
+  convention (the original's `atan2(n·screenX, n.z)` after resolving the
+  rotation-matrix handedness against gravity). θ is not clamped; only the
+  manual slider is bounded (−45…45°, 0.5° steps), as in the original.
 
 ## Reference math (verified against DuoFold.metal in 002; implementer never alters)
 
@@ -75,20 +77,22 @@ t   = E.z / (E.z - G.z)             // ray E→G extended to z = 0
 P   = E + t·(G - E)                 // hit point on interface plane
 uv  = P.xy / uSize                  // sample coordinate; black if P.xy ∉ [0,W]×[0,H]
 gap = G.z                           // 0 at hinge, W·sin|θ| at far edge
-g   = gap / (W·sin(maxTiltRad))     // 0..1; = 1 only at the far edge at max tilt.
-                                    // PROVISIONAL, 003 finalises. Metal uses the
-                                    // absolute gap (radius = blurSpread·gap); the old
-                                    // gap/(W·sin|θ|) made blur independent of tilt
-                                    // magnitude, which is wrong.
+r   = blurSpread · gap              // blur radius in logical px; blurSpread = 0.12.
+                                    // The ABSOLUTE gap, as in DuoFold.metal: no
+                                    // normalisation, because there is no maximum tilt
+                                    // any more — 003 deleted maxTiltDeg/maxTiltRad.
+                                    // Settled in the 003 review; 005 implements it.
 ```
 
 - If `uv` is outside [0,1]² → output black (alpha 1). Do not rely on
   sampler clamping; it smears the border.
-- Blur radius `r = uMaxBlurPx · g`. Disk blur with N taps (N ≤ 24), taps
-  on a golden-angle spiral or a fixed Poisson set; scale offsets by `r`.
-  Taps that land outside [0,1]² contribute black, not clamped edge.
-- Dim: `rgb *= 1 - uDimStrength · g` (linear is fine for v1; architect may
-  swap for a curve in 003).
+- Blur: golden-angle (Vogel) disk of radius `r`, tap count
+  `clamp(int(r·2), 6, 32)` evaluated under a constant GLSL loop bound; the
+  005 plan fixes the bound and the offset schedule. Taps that land outside
+  [0,1]² contribute black, not clamped edge.
+- Dim: `rgb *= max(1 − darkening · r, 0)` with `darkening = 0.015` (Metal's
+  `attenuation`). Slots 4 and 5 carry `blurSpread` and `darkening` from 005;
+  the uniform table is renamed by that plan, not before it.
 
 ## Uniform layout (fixed — order matters, indices are what Dart uses)
 
@@ -107,18 +111,17 @@ Adding a uniform = append at the end, bump this table, note it in the plan.
 
 | Name | Default | Notes |
 |---|---|---|
-| eyeDistanceMm | 320 | from the Swift default |
-| maxBlurPx | 24 | logical px at g = 1. Metal instead: blurSpread = 0.12 px per px of gap → 26.8 px at 35° on a 390-wide screen. 003 decides which semantics to keep. |
-| dimStrength | 0.6 | fraction removed at g = 1. Metal instead: darkening = 0.015 per px of blur radius → 0.40 removed at the same point. 003 decides. |
-| blurTaps | 16 | compile-time constant in GLSL; 24 is the ceiling. Metal: clamp(int(radius·2), 6, 32) adaptive taps, Vogel disk, per-pixel hash rotation. |
-| maxTiltDeg | 35 | clamp on |θ| from the motion model |
+| eyeDistanceMm | 320 | Swift `eyeDistanceMillimeters` |
+| pointsPerMm | 6 | Swift `pointsPerMillimeter`; eye = 1920 px |
+| maxBlurPx | 24 | placeholder holding uniform slot 4 since 003. In 005 the slot becomes `blurSpread = 0.12` with the Metal semantics: `radius = blurSpread · gap`. |
+| dimStrength | 0.6 | placeholder holding uniform slot 5 since 003. 005 adopts `attenuation = max(1 − darkening · radius, 0)`, `darkening = 0.015`. |
+| (blur taps) | — | the blur phase uses the original's `clamp(int(radius·2), 6, 32)` under a constant loop bound; no Dart tunable |
 
 ## Package targets
 
 ```
 flutter_shaders: 0.1.3       # AnimatedSampler only; pinned in 001 (latest on pub.dev)
-flutter_rotation_sensor: latest   # phase 004, architect confirms
-sensors_plus: latest         # fallback only
+# No sensor package: motion is the original Swift in ios/Runner (003).
 ```
 
 Pin exact versions in `pubspec.yaml` at phase 001 after `flutter pub add`.
@@ -134,8 +137,9 @@ lib/
     fold_shader.dart         # loads FragmentProgram once, exposes shader
   motion/
     tilt_source.dart         # TiltSource (ChangeNotifier): theta (rad, signed), isLive
-    fold_motion_model.dart   # attitude → θ, calibration, prediction
-    manual_tilt.dart         # slider-driven θ source (same interface)
+    fold_motion_channel.dart # MotionChannel + PlatformMotionChannel (method/event channels)
+    fold_motion_model.dart   # mode logic: native stream vs manual slider; recalibrate
+ios/Runner/AppDelegate.swift # FoldMotionBridge: FoldMotionModel.swift verbatim + channels
   demo/
     demo_content.dart        # the interface being looked at
     control_panel.dart       # floating panel
@@ -148,12 +152,14 @@ docs/
 ## Gotchas already known
 
 - `AnimatedSampler` re-rasterises its child every frame the shader
-  repaints. Fine for a phone screen; keep `blurTaps` modest.
+  repaints. Fine for a phone screen; keep the tap count modest.
 - On iOS the Core Motion rotation-matrix handedness must be resolved at
   runtime against the gravity vector so the hinge lands on the correct
-  side; the Swift repo notes it doesn't trust the docs for this. Do the
-  same in Dart: on calibration, record which screen edge gravity favours
-  and derive the sign of θ from that, not from an assumed axis.
+  side; the Swift repo notes it doesn't trust the docs for this. Done in
+  `FoldMotionBridge` since 003, in Swift, not in Dart: `rowsScore` vs
+  `columnsScore` against normalised gravity, latched once when they differ
+  by more than 0.2. Dart receives θ already in the sign convention above
+  and must never re-derive or re-sign it.
 - Platform views under the sampler are not captured. Demo content must be
   pure Flutter.
 - Impeller only. Don't reach for `dart:ui` APIs that exist only on Skia.
@@ -176,9 +182,10 @@ docs/
 - `flutter create --platforms=<x> .` rewrites `.metadata`'s
   `migration.platforms` to only the platforms named. Harmless (nothing
   reads it in 3.47), but expect the diff.
-- Build/compile validation: `flutter build macos --debug` (device-free;
-  compiles the same `--runtime-stage-metal` stage as iOS). Visual and
-  motion validation: `flutter run -d 00008120-000278980AE3601E` with a
+- Build/compile validation since 003: `flutter build ios --debug
+  --no-codesign` (device-free; compiles the Dart, the Swift bridge and the
+  same `--runtime-stage-metal` shader stage, and links CoreMotion). Visual
+  and motion validation: `flutter run -d 00008120-000278980AE3601E` with a
   human holding the phone and reporting against the plan's checklist.
 - `flutter test` runs on Skia (`flutter_tester`). Pixel-probe tests there
   validate the GLSL maths and the uniform binding, but not Impeller's
@@ -191,3 +198,25 @@ docs/
 - In a widget-test fixture, a childless `ColoredBox` under a `Row` lays out
   at height 0 and rasterises nothing; use `CrossAxisAlignment.stretch` (or
   `SizedBox.expand`) or every probe reads opaque black.
+- 3.47 iOS template is UIScene-based: app-level channels are created in
+  `didInitializeImplicitFlutterEngine` from
+  `engineBridge.applicationRegistrar.messenger()`. `SceneDelegate.swift`
+  stays empty.
+- A debug iOS build's `Runner` executable is a stub that loads
+  `Runner.debug.dylib`; check linked frameworks and symbols on the dylib.
+- `CMMotionManager` device motion needs no Info.plist usage key.
+- Widget-test text uses a fixed-width test font (glyph width = font size);
+  size rows for it or they overflow in tests only.
+- The zero pose is latched on the first Core Motion sample after launch or
+  after Recalibrate, in `FoldMotionBridge`. Launching with the phone flat on
+  a desk calibrates to that pose; θ is then measured from it and `atan2`
+  degenerates as the relative pitch approaches 90°. Hold the phone as you
+  intend to use it before the first frame, or recalibrate.
+- The handedness latch is resolved from live gravity data at the first
+  decisive sample and is never reset. A wrong latch computes the inverse
+  relative rotation, i.e. it shows up as θ inverted and nothing else — which
+  is why the device sign check is repeated after a cold relaunch in a
+  different attitude.
+- The reference pose and the latch survive a Dart hot restart (they live in
+  the native bridge); re-listening only replaces the event sink. Tap
+  Recalibrate after a hot restart.
