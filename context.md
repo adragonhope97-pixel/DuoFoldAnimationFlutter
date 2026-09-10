@@ -62,18 +62,24 @@ Source layout, for reference when reading the Swift:
   this convention after resolving the rotation-matrix handedness against
   gravity (see gotchas).
 
-## Reference math (architect verifies in 002; implementer never alters)
+## Reference math (verified against DuoFold.metal in 002; implementer never alters)
 
 For pixel p = (px, py):
 
 ```
+if |θ| < 1e-5 → sample p directly (identity); skip the rest
 u   = px - xh                       // signed distance from hinge along x
 G   = (xh + u·cos|θ|, py, |u|·sin|θ|)   // pixel's position on the rotated glass
+if E.z - G.z ≤ 1e-3 → black         // glass at/behind the eye (Metal guard)
 t   = E.z / (E.z - G.z)             // ray E→G extended to z = 0
 P   = E + t·(G - E)                 // hit point on interface plane
-uv  = P.xy / uSize                  // sample coordinate
+uv  = P.xy / uSize                  // sample coordinate; black if P.xy ∉ [0,W]×[0,H]
 gap = G.z                           // 0 at hinge, W·sin|θ| at far edge
-g   = gap / (W·sin|θ|)              // normalised 0..1 (guard θ = 0 → g = 0)
+g   = gap / (W·sin(maxTiltRad))     // 0..1; = 1 only at the far edge at max tilt.
+                                    // PROVISIONAL, 003 finalises. Metal uses the
+                                    // absolute gap (radius = blurSpread·gap); the old
+                                    // gap/(W·sin|θ|) made blur independent of tilt
+                                    // magnitude, which is wrong.
 ```
 
 - If `uv` is outside [0,1]² → output black (alpha 1). Do not rely on
@@ -102,9 +108,9 @@ Adding a uniform = append at the end, bump this table, note it in the plan.
 | Name | Default | Notes |
 |---|---|---|
 | eyeDistanceMm | 320 | from the Swift default |
-| maxBlurPx | 24 | logical px at g = 1 |
-| dimStrength | 0.6 | fraction of brightness removed at g = 1 |
-| blurTaps | 16 | compile-time constant in GLSL; 24 is the ceiling |
+| maxBlurPx | 24 | logical px at g = 1. Metal instead: blurSpread = 0.12 px per px of gap → 26.8 px at 35° on a 390-wide screen. 003 decides which semantics to keep. |
+| dimStrength | 0.6 | fraction removed at g = 1. Metal instead: darkening = 0.015 per px of blur radius → 0.40 removed at the same point. 003 decides. |
+| blurTaps | 16 | compile-time constant in GLSL; 24 is the ceiling. Metal: clamp(int(radius·2), 6, 32) adaptive taps, Vogel disk, per-pixel hash rotation. |
 | maxTiltDeg | 35 | clamp on |θ| from the motion model |
 
 ## Package targets
@@ -170,6 +176,18 @@ docs/
 - `flutter create --platforms=<x> .` rewrites `.metadata`'s
   `migration.platforms` to only the platforms named. Harmless (nothing
   reads it in 3.47), but expect the diff.
-- macOS desktop (Impeller/Metal by default since 3.47) is the device-free
-  validation target; its build compiles the same `--runtime-stage-metal`
-  stage as iOS.
+- Build/compile validation: `flutter build macos --debug` (device-free;
+  compiles the same `--runtime-stage-metal` stage as iOS). Visual and
+  motion validation: `flutter run -d 00008120-000278980AE3601E` with a
+  human holding the phone and reporting against the plan's checklist.
+- `flutter test` runs on Skia (`flutter_tester`). Pixel-probe tests there
+  validate the GLSL maths and the uniform binding, but not Impeller's
+  `FlutterFragCoord()` provenance; the closing evidence for the
+  logical-px claim is the first run on the iPhone (002 review, checklist H1).
+- This sandbox has no window server: `screencapture`/`osascript` fail, and
+  a macOS `flutter run` draws offscreen only. macOS compiles and executes
+  the shader; it cannot show it. Visual acceptance is a human with the
+  iPhone (device 00008120-000278980AE3601E).
+- In a widget-test fixture, a childless `ColoredBox` under a `Row` lays out
+  at height 0 and rasterises nothing; use `CrossAxisAlignment.stretch` (or
+  `SizedBox.expand`) or every probe reads opaque black.
