@@ -160,26 +160,31 @@ class _Panel extends StatelessWidget {
   }
 }
 
-/// Stand-in for SwiftUI's `.ultraThinMaterial`: backdrop blur under a
-/// translucent surface tint.
+/// Stand-in for SwiftUI's `.ultraThinMaterial` in the **light** appearance:
+/// backdrop blur under a translucent light tint. Explicit colours, not
+/// scheme-derived, so the panel stays neutral over the light demo content and
+/// over the black the shader paints outside the interface (004, decision 9).
 class _Frosted extends StatelessWidget {
   const _Frosted({required this.radius, required this.child});
+
+  /// iOS light `.ultraThinMaterial` ≈ 62 % of #F2F2F7 over a heavy blur.
+  static const Color _tint = Color(0x9EF2F2F7);
+  static const Color _hairline = Color(0x1F000000);
 
   final double radius;
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
-    final ColorScheme scheme = Theme.of(context).colorScheme;
     return ClipRRect(
       borderRadius: BorderRadius.circular(radius),
       child: BackdropFilter(
         filter: ui.ImageFilter.blur(sigmaX: 24, sigmaY: 24),
         child: DecoratedBox(
           decoration: BoxDecoration(
-            color: scheme.surface.withValues(alpha: 0.62),
+            color: _tint,
             borderRadius: BorderRadius.circular(radius),
-            border: Border.all(color: scheme.outline.withValues(alpha: 0.25)),
+            border: Border.all(color: _hairline),
           ),
           child: child,
         ),

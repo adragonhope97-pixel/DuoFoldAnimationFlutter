@@ -141,7 +141,9 @@ lib/
     fold_motion_model.dart   # mode logic: native stream vs manual slider; recalibrate
 ios/Runner/AppDelegate.swift # FoldMotionBridge: FoldMotionModel.swift verbatim + channels
   demo/
-    demo_content.dart        # the interface being looked at
+    demo_content.dart        # DemoContentView port: root, header, chips, hero
+    demo_sections.dart       # DemoContentView port: stat grid, Recent list
+    demo_style.dart          # iOS light system colours + text styles
     control_panel.dart       # floating panel
 shaders/
   duo_fold.frag
@@ -220,3 +222,23 @@ docs/
 - The reference pose and the latch survive a Dart hot restart (they live in
   the native bridge); re-listening only replaces the event sink. Tap
   Recalibrate after a hot restart.
+- The demo screen is pinned to the iOS **light** appearance (004). It hard-codes
+  the light values of the UIColor semantic names and reads `Theme.of(context)`
+  nowhere, so theme changes cannot move the reference screen. `MaterialApp`'s
+  theme is light and seeded with `#007AFF` from 004 on.
+- `.background.secondary` (the stat tiles and the Recent list) is `#F2F2F7` in
+  light appearance — the same colour as the page. The near-invisible cards are
+  the original's, not a porting bug.
+- The content is taller than the screen at 390x844. It is laid out at natural
+  height in a `SingleChildScrollView(physics: NeverScrollableScrollPhysics())`
+  and clipped at the bottom, which is what SwiftUI's overflowing top-aligned
+  `VStack` plus `ContentView`'s `.clipped()` does. Do not shrink it to fit.
+- SwiftUI's `.firstTextBaseline` uses a shape's **bottom edge** as its baseline,
+  so `DemoContentView`'s avatar sits high; Flutter's `CrossAxisAlignment
+  .baseline` top-aligns baseline-less children instead, so the offset is an
+  explicit `DemoHeader.textTopInset = 29.7`.
+- SwiftUI `Text` boxes come from the font's line height, not from the HIG
+  "line height" column; leave `TextStyle.height` null in the demo. SF's system
+  font metrics are ascent ≈ 0.953 em, descent ≈ 0.228 em (line box ≈ 1.181 em);
+  the ascent is what `DemoHeader.textTopInset = 44 − 0.953 × 15 = 29.7` is
+  derived from, so do not "round" it away.

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'demo/control_panel.dart';
 import 'demo/demo_content.dart';
@@ -55,10 +56,14 @@ class FoldApp extends StatelessWidget {
     return MaterialApp(
       title: 'Duo Fold',
       debugShowCheckedModeBanner: false,
+      // Light, like the original running in the light appearance (see
+      // Docs/demo.png). Seeded with systemBlue because SwiftUI's default
+      // `.accentColor` is systemBlue; the demo content itself hard-codes
+      // every colour and does not read this theme.
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.deepPurple,
-          brightness: Brightness.dark,
+          seedColor: const Color(0xFF007AFF),
+          brightness: Brightness.light,
         ),
       ),
       home: FoldScreen(
@@ -113,28 +118,34 @@ class _FoldScreenState extends State<FoldScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: Stack(
-        fit: StackFit.expand,
-        children: <Widget>[
-          ListenableBuilder(
-            listenable: _model,
-            builder: (BuildContext context, Widget? child) {
-              return FoldEffect(
-                angle: _model.theta,
-                params: widget.params,
-                child: child!,
-              );
-            },
-            child: const DemoContent(),
-          ),
-          Positioned(
-            right: 16,
-            bottom: 16,
-            child: SafeArea(child: ControlPanel(model: _model)),
-          ),
-        ],
+    // Dark status-bar glyphs over the light demo content. `.dark` names the
+    // icon brightness, not the background's.
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.dark,
+      child: Scaffold(
+        // Black is what the shader paints where a ray misses the interface.
+        backgroundColor: Colors.black,
+        body: Stack(
+          fit: StackFit.expand,
+          children: <Widget>[
+            ListenableBuilder(
+              listenable: _model,
+              builder: (BuildContext context, Widget? child) {
+                return FoldEffect(
+                  angle: _model.theta,
+                  params: widget.params,
+                  child: child!,
+                );
+              },
+              child: const DemoContent(),
+            ),
+            Positioned(
+              right: 16,
+              bottom: 16,
+              child: SafeArea(child: ControlPanel(model: _model)),
+            ),
+          ],
+        ),
       ),
     );
   }
