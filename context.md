@@ -46,9 +46,11 @@ Source layout, for reference when reading the Swift:
 ## Coordinate conventions (both agents use these)
 
 - Work in **logical pixels** in the shader. `uSize` is the logical size of
-  the sampled child. `FlutterFragCoord()` is in logical px on Impeller when
-  the sampler's canvas is the widget's canvas; verify once in phase 001 and
-  record the finding in the plan review.
+  the sampled child (the `size` argument of the `AnimatedSampler` builder).
+  `FlutterFragCoord()` is the local position of the `drawRect` that used the
+  shader (`runtime_effect.vert`: `_fragCoord = position`), i.e. logical px
+  from the widget's top-left. Established from source and by the 001
+  build/test; on-screen Impeller confirmation is 002 acceptance item 0.
 - Eye distance is converted from mm to logical px on the Dart side:
   `pxPerMm = 160 / 25.4` (Flutter logical px are 1/160 in by definition).
   Do **not** use `devicePixelRatio` for this.
@@ -108,7 +110,7 @@ Adding a uniform = append at the end, bump this table, note it in the plan.
 ## Package targets
 
 ```
-flutter_shaders: ^0.1.x      # AnimatedSampler, SetFloats helpers
+flutter_shaders: 0.1.3       # AnimatedSampler only; pinned in 001 (latest on pub.dev)
 flutter_rotation_sensor: latest   # phase 004, architect confirms
 sensors_plus: latest         # fallback only
 ```
@@ -125,6 +127,7 @@ lib/
     fold_parameters.dart     # FoldParameters
     fold_shader.dart         # loads FragmentProgram once, exposes shader
   motion/
+    tilt_source.dart         # TiltSource (ChangeNotifier): theta (rad, signed), isLive
     fold_motion_model.dart   # attitude → θ, calibration, prediction
     manual_tilt.dart         # slider-driven θ source (same interface)
   demo/
@@ -154,3 +157,19 @@ docs/
 - Shader compile errors from `impellerc` surface at `flutter build` /
   `flutter run`, not at `flutter analyze`. The implementer must run a
   build to validate GLSL.
+- `AnimatedSampler` compares its builder with `==`; pass a fresh closure
+  every build (a method tear-off compares equal and freezes the effect).
+- Never cache the shader-loading `Future` in a static: it is bound to the
+  zone that created it, and under `flutter test` that is one test's
+  FakeAsync zone — later tests wait forever. Cache the loaded instance.
+- Inside `testWidgets`, never `await` the shader loader before the first
+  `pump()`; the load completes on a microtask that only `pump` flushes.
+- Flutter 3.47: the `IMPELLER_TARGET_OPENGLES` uv flip is no longer needed.
+- `double.fromEnvironment` does not exist; read `--dart-define` values with
+  `String.fromEnvironment` + `double.tryParse`.
+- `flutter create --platforms=<x> .` rewrites `.metadata`'s
+  `migration.platforms` to only the platforms named. Harmless (nothing
+  reads it in 3.47), but expect the diff.
+- macOS desktop (Impeller/Metal by default since 3.47) is the device-free
+  validation target; its build compiles the same `--runtime-stage-metal`
+  stage as iOS.

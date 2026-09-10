@@ -1,30 +1,97 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_shaders/flutter_shaders.dart';
 import 'package:flutter_test/flutter_test.dart';
-
+import 'package:iphoneduo_animation_flutter/demo/control_panel.dart';
+import 'package:iphoneduo_animation_flutter/demo/demo_content.dart';
+import 'package:iphoneduo_animation_flutter/fold/fold_effect.dart';
+import 'package:iphoneduo_animation_flutter/fold/fold_parameters.dart';
 import 'package:iphoneduo_animation_flutter/main.dart';
+import 'package:iphoneduo_animation_flutter/motion/manual_tilt.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  group('FoldParameters', () {
+    test('defaults match context.md tunables', () {
+      const FoldParameters p = FoldParameters();
+      expect(p.eyeDistanceMm, 320);
+      expect(p.maxBlurPx, 24);
+      expect(p.dimStrength, 0.6);
+      expect(p.maxTiltDeg, 35);
+      expect(FoldParameters.blurTaps, 16);
+    });
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    test('eyeDistancePx converts with 160/25.4 px per mm', () {
+      expect(const FoldParameters().eyeDistancePx, closeTo(2015.748, 0.001));
+      expect(
+        const FoldParameters(eyeDistanceMm: 25.4).eyeDistancePx,
+        closeTo(160, 1e-9),
+      );
+    });
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+    test('copyWith and equality', () {
+      const FoldParameters p = FoldParameters();
+      expect(p.copyWith(), p);
+      expect(p.copyWith(maxBlurPx: 8), const FoldParameters(maxBlurPx: 8));
+      expect(p.copyWith(maxBlurPx: 8), isNot(p));
+    });
+  });
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+  group('ManualTilt', () {
+    test('clamps to ±maxDeg and reports θ in radians', () {
+      final ManualTilt tilt = ManualTilt(maxDeg: 35, initialDeg: -50);
+      expect(tilt.degrees, -35);
+      expect(tilt.theta, closeTo(-35 * math.pi / 180, 1e-12));
+      tilt.degrees = 90;
+      expect(tilt.degrees, 35);
+      tilt.degrees = 20;
+      expect(tilt.theta, greaterThan(0)); // θ > 0 ⇒ hinge on the right edge
+      tilt.dispose();
+    });
+
+    test('notifies only when the clamped value changes', () {
+      final ManualTilt tilt = ManualTilt(maxDeg: 35);
+      int notified = 0;
+      tilt.addListener(() => notified++);
+      tilt.degrees = 10;
+      tilt.degrees = 10; // no change
+      tilt.degrees = 40; // clamps to 35
+      tilt.degrees = 50; // still 35: no change
+      tilt.reset();
+      expect(notified, 3);
+      tilt.dispose();
+    });
+  });
+
+  group('FoldApp', () {
+    testWidgets('composes demo content, fold effect and panel', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(const FoldApp(initialTiltDegrees: -20));
+      await tester.pump();
+      expect(find.byType(FoldEffect), findsOneWidget);
+      expect(find.byType(DemoContent), findsOneWidget);
+      expect(find.byType(ControlPanel), findsOneWidget);
+      expect(find.byType(Slider), findsOneWidget);
+      expect(find.text('θ -20.0°'), findsOneWidget);
+      expect(find.text('hinge left'), findsOneWidget);
+    });
+
+    testWidgets(
+      'fold shader loads in the test renderer and enables the sampler',
+      (WidgetTester tester) async {
+        // The load is driven by pump(): FragmentProgram.fromAsset completes
+        // on a microtask that pump flushes. Do not await FoldShader.load()
+        // before the first pump — inside testWidgets that never resumes.
+        await tester.pumpWidget(const FoldApp(initialTiltDegrees: 0));
+        await tester.pump();
+        await tester.pump();
+        expect(find.byType(FoldShaderError), findsNothing);
+        final AnimatedSampler sampler = tester.widget<AnimatedSampler>(
+          find.byType(AnimatedSampler),
+        );
+        expect(sampler.enabled, isTrue);
+      },
+    );
   });
 }

@@ -34,6 +34,9 @@ dependencies:
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
+  # AnimatedSampler: rasterises the child into a ui.Image for the shader.
+  # Exact pin per context.md.
+  flutter_shaders: 0.1.3
 
 dev_dependencies:
   flutter_test:
@@ -56,6 +59,11 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+  # Compiled by impellerc at build time; loaded via FragmentProgram.fromAsset
+  # with exactly this key (see lib/fold/fold_shader.dart).
+  shaders:
+    - shaders/duo_fold.frag
 
   # To add assets to your application, add an assets section, like this:
   # assets:

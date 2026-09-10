@@ -1133,3 +1133,269 @@ and drew; report that line and any `Error`/`Exception` lines verbatim.
 - Running on the iPhone. Optional for the human later; not required for
   acceptance.
 - The "fluitter" typo in the pubspec description.
+
+## Implementation report
+
+STATUS: DONE
+
+Files written:
+- `shaders/duo_fold.frag`
+- `lib/fold/fold_parameters.dart`
+- `lib/fold/fold_shader.dart`
+- `lib/fold/fold_effect.dart`
+- `lib/motion/tilt_source.dart`
+- `lib/motion/manual_tilt.dart`
+- `lib/demo/demo_content.dart`
+- `lib/demo/control_panel.dart`
+
+Files edited:
+- `pubspec.yaml` — hunk 1 added `flutter_shaders: 0.1.3` under `dependencies`;
+  hunk 2 added the `shaders: - shaders/duo_fold.frag` entry under `flutter:`.
+  Both applied verbatim.
+- `lib/main.dart` — full replacement: `FoldApp`/`FoldScreen` composing
+  `DemoContent` under `FoldEffect` (driven by `ManualTilt`), with
+  `ControlPanel` floating outside the effect, and the `TILT_DEGREES`
+  dart-define plumbed to the initial slider value.
+- `test/widget_test.dart` — full replacement: 7 tests (3 `FoldParameters`, 2
+  `ManualTilt`, 2 `FoldApp`).
+- `.metadata` — rewritten by `flutter create --platforms=macos .` (see
+  Deviations #1).
+
+Deviations from plan:
+1. `flutter create --platforms=macos .` replaced the existing `android` and
+   `ios` platform entries in `.metadata`'s migration list with a single
+   `macos` entry, rather than only adding `macos` alongside them as Decision
+   1 / the `macos/` Files note implied. Verified with `git status`/`git diff`
+   that the `android/` and `ios/` directories themselves were untouched —
+   only `.metadata`'s bookkeeping list changed. Accepted per the plan's own
+   instruction to "accept that change."
+2. `docs/plans/001-scaffold.md` was already present in the working tree
+   before Command 0 ran (supplied with `context.md` and the agent defs), so
+   the baseline commit already includes it and it does not show as a new
+   file in the post-run `git status` that Acceptance 4 describes. Its
+   content is otherwise exactly as intended by the plan (this report is the
+   only addition). No other part of Acceptance 4 differs: `git status
+   --porcelain` after the run shows exactly `M .metadata`, `M lib/main.dart`,
+   `M pubspec.lock`, `M pubspec.yaml`, `M test/widget_test.dart`, and
+   untracked `lib/demo/`, `lib/fold/`, `lib/motion/`, `macos/`, `shaders/`.
+   Nothing under `android/` or `ios/`.
+
+Self-fixes applied: none. No analyzer issues, no compile errors, no
+dependency-resolution problems — every step matched the plan's dry-run
+prediction on the first try.
+
+Command results:
+```
+flutter pub get        — Got dependencies! (flutter_shaders 0.1.3 resolved as pinned)
+dart format lib test   — Formatted 9 files (0 changed)
+flutter analyze        — No issues found!
+flutter test           — All tests passed! (7/7: 3 FoldParameters, 2 ManualTilt, 2 FoldApp)
+flutter build macos --debug
+                        — ok: "✓ Built build/macos/Build/Products/Debug/iphoneduo_animation_flutter.app"
+                          (one unrelated Xcode warning: "Run script build phase
+                          'Run Script' will be run during every build ..." —
+                          pre-existing Runner target script-phase config, not
+                          shader-related)
+ls .../flutter_assets/shaders/
+                        — duo_fold.frag  ink_sparkle.frag  stretch_effect.frag
+flutter run -d macos --dart-define=TILT_DEGREES=-20
+                        — started and drew a first frame (DevTools URI printed,
+                          "Flutter run key commands." reached), then killed via
+                          pkill per instructions. grep output:
+                            8:Flutter run key commands.
+                          No Error/Exception/impellerc lines matched. The log
+                          also contains a benign "Failed to foreground app;
+                          open returned 1" line — this sandbox has no active
+                          GUI session for `open` to bring a window forward;
+                          unrelated to the build or shader compile, and the
+                          engine/process came up normally regardless.
+```
+
+Open questions for architect:
+1. Should `.metadata` keep only the `macos` migration entry (current state,
+   from stock `flutter create --platforms=macos .` behaviour), or should the
+   `android`/`ios` entries be restored alongside it? Either way the
+   `android/` and `ios/` source trees themselves are untouched.
+2. Visual Acceptance 5a–5f needs an actual on-screen window; this execution
+   environment is headless (no window server for `open` to foreground the
+   app), so those checks were not performed here and are left for the main
+   session / human with `flutter run -d macos --dart-define=TILT_DEGREES=-20`,
+   as the plan already anticipates in Acceptance 5's own wording.
+
+## Review
+
+STATUS: ACCEPTED
+
+Provisional on one item: Acceptance 5a (visual confirmation that
+`FlutterFragCoord()` is logical px under Impeller) has not been observed by a
+human. Grounds for accepting without it, and the exact check carried into
+002, are in item 4 below.
+
+### 1. Diff against baseline `d3afb3d`, checked against the plan
+
+Method: re-extracted every code block from `## Files` and `diff`ed it
+against the working tree; `git diff HEAD` for tracked files; `git ls-files
+--others --exclude-standard` for new ones.
+
+| Path | Result |
+|---|---|
+| `shaders/duo_fold.frag` | byte-identical to plan |
+| `lib/fold/fold_parameters.dart` | byte-identical |
+| `lib/fold/fold_shader.dart` | byte-identical |
+| `lib/fold/fold_effect.dart` | byte-identical |
+| `lib/motion/tilt_source.dart` | byte-identical |
+| `lib/motion/manual_tilt.dart` | byte-identical |
+| `lib/demo/demo_content.dart` | byte-identical |
+| `lib/demo/control_panel.dart` | byte-identical |
+| `lib/main.dart` | byte-identical (full replacement) |
+| `test/widget_test.dart` | byte-identical (full replacement) |
+| `pubspec.yaml` | both hunks verbatim, nothing else changed |
+| `pubspec.lock` | adds `flutter_shaders 0.1.3` (sha256 `34794aca…`), nothing else |
+| `macos/` (28 committable files) | stock template. Compared against an independently generated `flutter create --platforms=macos` tree: only `PRODUCT_BUNDLE_IDENTIFIER`/`PRODUCT_COPYRIGHT` org lines differ (`com.debojyoti` here, as intended). `Flutter/ephemeral/` (absolute paths, baked `DART_DEFINES`) is excluded by `macos/.gitignore`. No `FLTEnableImpeller` key in `macos/Runner/Info.plist`, so Impeller stays on. |
+| `.metadata` | see deviation 1 |
+| `docs/plans/001-scaffold.md` | append-only: 88 added lines, 0 removed (`git diff` shows a single hunk at the end) |
+| stray files under `lib/`, `shaders/`, `test/` | none |
+| `android/`, `ios/` | untouched |
+
+Reported deviations:
+
+1. `.metadata` `migration.platforms` now lists `root` + `macos` instead of
+   `root` + `android` + `ios`. **Accepted.** In this SDK the list is written
+   by `create_base.dart` (from the `--platforms` requested) and read by
+   nothing — there is no `migrate` command in `flutter_tools/lib/src/commands/`
+   and no other consumer of `MigrateConfig`. It affects no build, run or
+   test path. Answer to open question 1: leave it as is. (If anyone wants the
+   entries back, `flutter create --platforms=android,ios,macos .` regenerates
+   the list; not worth a cycle.)
+2. The plan file was already in the baseline commit, so Acceptance 4's
+   "new `docs/plans/001-scaffold.md`" reads as "modified". **Accepted** — my
+   wording, the tree state is exactly right.
+
+Self-fixes: none reported, none found.
+
+### 2. Independent verification (not taken from the report)
+
+- `flutter analyze` in the repo: `No issues found!`
+- `flutter test --timeout 60s` in the repo: 7/7 passed, including the
+  sampler-enabled test on the tester renderer.
+- `build/macos/…/flutter_assets/shaders/duo_fold.frag` present, 4568 bytes —
+  the same size as the Metal runtime stage `impellerc --sksl
+  --runtime-stage-metal` produced from the plan's GLSL during the dry-run.
+- Shader vs `context.md`, re-derived rather than trusting the plan:
+  - Uniform order `uSize(0,1) uAngle(2) uEyeDistPx(3) uMaxBlurPx(4)
+    uDimStrength(5)`, `uTex` sampler 0 — matches the fixed table.
+  - `fold_effect.dart` `setFloat` indices 0–5 and `setImageSampler(0, …)`
+    match that table one for one; `uEyeDistPx = eyeDistanceMm · 160/25.4`
+    with no `devicePixelRatio` — matches the conversion rule.
+  - Sign path: `ManualTilt.degrees > 0 → theta > 0 → xh = uSize.x` (right
+    edge) — matches "θ > 0 means the right edge is the hinge".
+  - `uv = p / uSize`, black with α = 1 outside `[0,1]²`, no sampler
+    clamping relied on — matches the reference; with θ = 0 the reference
+    gives `G = (px, py, 0)`, `t = 1`, `P = G`, i.e. exactly this
+    pass-through.
+  - Impeller dialect: `#include <flutter/runtime_effect.glsl>`,
+    `FlutterFragCoord()`, two-argument `texture()`, no `gl_FragCoord`, no
+    loops, no dynamic indexing.
+  - No blur, no dim, no reprojection — phase boundary respected.
+
+### 3. Runtime observation
+
+The implementer's `flutter run -d macos --dart-define=TILT_DEGREES=-20`
+reached "Flutter run key commands." with no `Error`/`Exception`/`impellerc`
+lines: the Metal runtime stage loaded and the first frame was drawn. The
+"Failed to foreground app; open returned 1" line is the sandbox lacking a
+window server for `open`; the engine process itself came up.
+
+### 4. Acceptance 5a — provisional, carried into 002
+
+Accepted provisionally on source evidence: `runtime_effect.vert` sets
+`_fragCoord = position` (the untransformed local vertex position);
+`AnimatedSampler` calls the builder on a fresh `PictureRecorder` canvas with
+identity transform and adds the picture beneath the engine's DPR transform;
+so `drawRect(Offset.zero & size)` spans `[0, W] × [0, H]` logical px by
+construction. The tester run exercises the same shader/uniform contract on
+Skia (where `gl_FragCoord` is rewritten to local coordinates). What is
+missing is only eyes on an Impeller frame.
+
+Carry this into the 002 acceptance list as item 0, exactly:
+
+> **0. (from 001) `FlutterFragCoord()` is logical px on Impeller.** On the
+> built-in Retina display run
+> `flutter run -d macos --dart-define=TILT_DEGREES=0`, confirm the panel's
+> last line reads `dpr 2.00`, and take a window screenshot (`screencapture
+> -l <windowid> shot.png`, or the main session's screenshot tooling).
+> PASS: the 2 px white frame is on all four window edges and there is no
+> black region; pixel probe: `(width − 1, height / 2)` and
+> `(width / 2, height − 1)` are white. FAIL: the interface occupies only the
+> top-left quarter at 2× with black elsewhere. Then
+> `--dart-define=TILT_DEGREES=-20`: a 3 px yellow bar on the LEFT edge;
+> `+20` via the slider: on the RIGHT edge. Record the result in 002's
+> `## Review`; if FAIL, 002's reprojection must not be judged until the
+> coordinate space is fixed (multiply `p` by `1/dpr` on the Dart side is
+> NOT the fix — the shader must receive logical px; report to the
+> architect).
+
+### 5. Proposed `context.md` hunks (main session routes to the implementer)
+
+Hunk A — file layout:
+
+```
+   motion/
++    tilt_source.dart         # TiltSource (ChangeNotifier): theta (rad, signed), isLive
+     fold_motion_model.dart   # attitude → θ, calibration, prediction
+     manual_tilt.dart         # slider-driven θ source (same interface)
+```
+
+Hunk B — coordinate conventions, first bullet:
+
+```
+-- Work in **logical pixels** in the shader. `uSize` is the logical size of
+-  the sampled child. `FlutterFragCoord()` is in logical px on Impeller when
+-  the sampler's canvas is the widget's canvas; verify once in phase 001 and
+-  record the finding in the plan review.
++- Work in **logical pixels** in the shader. `uSize` is the logical size of
++  the sampled child (the `size` argument of the `AnimatedSampler` builder).
++  `FlutterFragCoord()` is the local position of the `drawRect` that used the
++  shader (`runtime_effect.vert`: `_fragCoord = position`), i.e. logical px
++  from the widget's top-left. Established from source and by the 001
++  build/test; on-screen Impeller confirmation is 002 acceptance item 0.
+```
+
+Hunk C — package targets:
+
+```
+-flutter_shaders: ^0.1.x      # AnimatedSampler, SetFloats helpers
++flutter_shaders: 0.1.3       # AnimatedSampler only; pinned in 001 (latest on pub.dev)
+```
+
+Hunk D — gotchas, append:
+
+```
++- `AnimatedSampler` compares its builder with `==`; pass a fresh closure
++  every build (a method tear-off compares equal and freezes the effect).
++- Never cache the shader-loading `Future` in a static: it is bound to the
++  zone that created it, and under `flutter test` that is one test's
++  FakeAsync zone — later tests wait forever. Cache the loaded instance.
++- Inside `testWidgets`, never `await` the shader loader before the first
++  `pump()`; the load completes on a microtask that only `pump` flushes.
++- Flutter 3.47: the `IMPELLER_TARGET_OPENGLES` uv flip is no longer needed.
++- `double.fromEnvironment` does not exist; read `--dart-define` values with
++  `String.fromEnvironment` + `double.tryParse`.
++- `flutter create --platforms=<x> .` rewrites `.metadata`'s
++  `migration.platforms` to only the platforms named. Harmless (nothing
++  reads it in 3.47), but expect the diff.
++- macOS desktop (Impeller/Metal by default since 3.47) is the device-free
++  validation target; its build compiles the same `--runtime-stage-metal`
++  stage as iOS.
+```
+
+### 6. Notes for the 002 plan
+
+- The hinge marker and parameter sentinel in `duo_fold.frag` are 001-only
+  debug aids; 002 decides whether the marker survives (it is useful for
+  judging hinge side by eye) and keeps the sentinel.
+- `setImageSampler(…, filterQuality: FilterQuality.none)` already gives 002
+  its nearest sampling.
+- `FoldParameters.blurTaps` doc says "a compile-time constant in
+  `duo_fold.frag`"; the constant does not exist until 003. Fix the comment
+  in 003, not now.
