@@ -26,8 +26,10 @@ Per pixel, the shader casts a ray from a fixed eye (320 mm from the screen)
 through the pixel's position on the rotated glass, extends it to the
 interface plane, and samples there with a disk blur whose radius grows with
 the glass–plane gap. The full model — coordinate conventions, the
-reprojection math, the blur kernel and the uniform layout — is written up in
-[`context.md`](context.md).
+reprojection math, the blur kernel and the uniform layout — is worked through
+in the plan files under [`docs/plans/`](docs/plans/), starting with
+[`002-reprojection.md`](docs/plans/002-reprojection.md) and
+[`005-blur-dim.md`](docs/plans/005-blur-dim.md).
 
 ### Layout
 
