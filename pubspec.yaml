@@ -1,5 +1,5 @@
 name: iphoneduo_animation_flutter
-description: "A fluitter project that showcases the new iphone duo fold animation"
+description: "Flutter port of the iPhone Duo frosted-glass fold effect (DuoLikeAnimation) — fragment shader on Impeller, driven by device attitude."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
