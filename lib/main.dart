@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -29,7 +31,29 @@ double launchTiltDegrees() {
 /// The `MANUAL_TILT` dart-define; false when absent.
 bool launchManualTilt() => _manualTiltDefine;
 
+/// Dark glyphs over the light page, and transparent bars on Android so the
+/// Flutter view — and with it the area the shader samples — is the whole
+/// screen, as the iOS window is under the status bar and home indicator.
+/// `SystemUiOverlayStyle.dark` would paint the Android navigation bar opaque
+/// black (its `systemNavigationBarColor` is `0xFF000000`). On iOS only
+/// `statusBarBrightness` applies, and it is what `.dark` set there too.
+const SystemUiOverlayStyle kSystemUiOverlayStyle = SystemUiOverlayStyle(
+  statusBarColor: Colors.transparent,
+  statusBarIconBrightness: Brightness.dark,
+  statusBarBrightness: Brightness.light,
+  systemStatusBarContrastEnforced: false,
+  systemNavigationBarColor: Colors.transparent,
+  systemNavigationBarIconBrightness: Brightness.dark,
+  systemNavigationBarContrastEnforced: false,
+);
+
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  // Draw under the status and navigation bars so the sampled area is the
+  // whole screen on every Android version (15+ enforces this; older versions
+  // inset the view by default). On iOS this only re-asserts the visible
+  // status bar and home indicator.
+  unawaited(SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge));
   runApp(const FoldApp());
 }
 
@@ -118,10 +142,8 @@ class _FoldScreenState extends State<FoldScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Dark status-bar glyphs over the light demo content. `.dark` names the
-    // icon brightness, not the background's.
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: SystemUiOverlayStyle.dark,
+      value: kSystemUiOverlayStyle,
       child: Scaffold(
         // Black is what the shader paints where a ray misses the interface.
         backgroundColor: Colors.black,

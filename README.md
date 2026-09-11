@@ -19,7 +19,7 @@ interface, black wherever a ray misses it.
 |---|---|---|
 | Shader | Metal `layerEffect` | GLSL fragment shader, compiled by `impellerc` ([`shaders/duo_fold.frag`](shaders/duo_fold.frag)) |
 | Feeding the UI into the shader | `layerEffect` samples the view | [`AnimatedSampler`](https://pub.dev/packages/flutter_shaders) rasterises the child each frame and binds it as a sampler |
-| Device attitude | `CMMotionManager` | Same Core Motion model, ported to Swift in the iOS runner and streamed over an `EventChannel` |
+| Device attitude | `CMMotionManager` | Same motion model, ported to Swift in the iOS runner and to Kotlin in the Android runner (`TYPE_GAME_ROTATION_VECTOR` + gyroscope), both streamed over the same `EventChannel` |
 | Tunables | `FoldParameters` | [`FoldParameters`](lib/fold/fold_parameters.dart) — field for field |
 
 Per pixel, the shader casts a ray from a fixed eye (320 mm from the screen)
@@ -39,6 +39,8 @@ lib/fold/                    FoldEffect widget, FoldParameters, shader loader
 lib/motion/                  tilt source: Core Motion stream or manual slider
 lib/demo/                    the interface behind the glass + control panel
 ios/Runner/AppDelegate.swift FoldMotionBridge (Core Motion → EventChannel)
+android/app/src/main/kotlin/…/FoldMotionBridge.kt
+                             FoldMotionBridge (SensorManager → EventChannel)
 docs/plans/                  design notes and review log for each phase
 test/                        shader golden tests, blur/dim and widget tests
 ```
@@ -49,11 +51,12 @@ Requires Flutter 3.47 or later (Impeller is the default renderer).
 
 ```sh
 flutter pub get
-flutter run -d <your-iphone>
+flutter run -d <your-iphone-or-android-phone>
 ```
 
-Run it on a physical iPhone: the effect is driven by the device's attitude,
-which the simulator cannot provide. The floating panel at the bottom has:
+Run it on a physical phone: the effect is driven by the device's attitude,
+which the simulator and emulator cannot provide. The floating panel at the
+bottom has:
 
 - **Recalibrate** — re-zeroes the rest pose to the phone's current attitude.
   The first sample after launch is used as the zero pose automatically.
@@ -65,13 +68,14 @@ which the simulator cannot provide. The floating panel at the bottom has:
 
 | Platform | Shader | Motion-driven tilt |
 |---|---|---|
-| iOS | ✅ | ✅ Core Motion |
-| Android | ✅ Impeller | ⏳ manual slider only — sensor bridge not yet written |
+| iOS | ✅ | ✅ Core Motion (`ios/Runner/AppDelegate.swift`) |
+| Android | ✅ Impeller (Vulkan, GLES fallback) | ✅ `TYPE_GAME_ROTATION_VECTOR` + `TYPE_GYROSCOPE` (`android/app/src/main/kotlin/…/FoldMotionBridge.kt`); falls back to the slider on devices without a gyroscope |
 | macOS | ✅ | manual slider only (no attitude sensor) |
 
-The shader itself has no platform-specific code; only the tilt source does.
-Adding Android motion means a `SensorManager` rotation-vector bridge on the
-same `duo_fold/motion/tilt` event channel — contributions welcome.
+The shader and the Dart code have no platform-specific paths; the two native
+bridges implement the same `duo_fold/motion` channels with the same model
+(reference pose latched on the first sample, 0.7 smoothing, 40 ms gyro
+prediction, θ > 0 ⇔ right edge is the hinge).
 
 ## Tuning
 
