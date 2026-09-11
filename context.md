@@ -161,14 +161,23 @@ lib/
     fold_motion_model.dart   # mode logic: native stream vs manual slider; recalibrate
 ios/Runner/AppDelegate.swift # FoldMotionBridge: FoldMotionModel.swift verbatim + channels
   demo/
-    demo_content.dart        # DemoContentView port: root, header, chips, hero
-    demo_sections.dart       # DemoContentView port: stat grid, Recent list
-    demo_style.dart          # iOS light system colours + text styles
+    demo_content.dart      # portfolio root: page, scrims, pill, dock
+    demo_sections.dart     # About / Education / Contact
+    portfolio_hero.dart    # avatar, NBSP heading, subheading, tagline
+    portfolio_index_pill.dart # static "Index" pill at its 0 % rest state
+    portfolio_dock.dart
+    portfolio_tokens.dart  # debojyoticodes.in colour/type/metric tokens
+    portfolio_data.dart    # strings quoted from the site bundle
+    portfolio_icons.dart   # the dock's SVG path data
+    svg_path.dart          # SVG path subset parser
+    demo_style.dart        # iOS light colours the control panel still uses
     control_panel.dart       # floating panel
 shaders/
   duo_fold.frag
 docs/
   plans/                     # 001-scaffold.md … 005-polish.md
+test/
+  flutter_test_config.dart   # registers Geist for every suite
 ```
 
 ## Gotchas already known
@@ -242,7 +251,7 @@ docs/
 - The reference pose and the latch survive a Dart hot restart (they live in
   the native bridge); re-listening only replaces the event sink. Tap
   Recalibrate after a hot restart.
-- The demo screen is pinned to the iOS **light** appearance (004). It hard-codes
+- The demo screen is pinned to the **light** appearance (004/007). It hard-codes
   the light values of the UIColor semantic names and reads `Theme.of(context)`
   nowhere, so theme changes cannot move the reference screen. `MaterialApp`'s
   theme is light and seeded with `#007AFF` from 004 on.
@@ -309,3 +318,19 @@ docs/
   reflow it produced in 006 was pre-existing drift, verified by formatting the
   `be6eecd` blobs. `dart format --output=none --set-exit-if-changed lib test`
   must exit 0 before a report is written.
+- The demo content since 007 is a port of debojyoticodes.in, not
+  `DemoContentView.swift`, and it is **static**: wallpaper for the shader to
+  sample. Nothing in `lib/demo/` outside `control_panel.dart` may hold state,
+  a timer, a controller or a gesture. The page does not scroll — it lays out
+  at natural height inside a `SingleChildScrollView` with
+  `NeverScrollableScrollPhysics` and is clipped at the bottom.
+- Its type scale comes from CSS, so its `TextStyle`s set `height` explicitly
+  (Tailwind line-height / font size); the "leave `height` null" rule above
+  applies only to `control_panel.dart`, which is still SwiftUI-derived.
+- `AnimatedSampler`'s render object is a `RenderProxyBox`: hit testing is
+  *not* reprojected — taps land where the pixel would be at θ = 0. That is
+  the reason the demo screen takes no gestures at all; do not add one.
+- Widget tests that mount `DemoContent` need the real Geist faces. Under
+  `flutter_test`'s fallback font the Index pill's fixed 190×40 header
+  overflows by 20 px. `test/flutter_test_config.dart` registers them for
+  every suite; do not resize the pill to satisfy a test.
